@@ -1,8 +1,9 @@
-# Manejo de Interrupciones en FreeRTOS
+# Paso 02
+## Manejo de Interrupciones en FreeRTOS
 
 A continuación, se detallan las respuestas a tus consultas sobre la gestión y el comportamiento de las Rutinas de Servicio de Interrupción (ISR) dentro del ecosistema de FreeRTOS.
 
-## 1. ¿Qué funciones de la API de FreeRTOS se pueden usar dentro de una rutina de servicio de interrupción?
+### 1. ¿Qué funciones de la API de FreeRTOS se pueden usar dentro de una rutina de servicio de interrupción?
 
 En FreeRTOS, **nunca** debes llamar a una función de la API estándar dentro de una ISR (por ejemplo, no puedes usar `xQueueSend` o `xSemaphoreTake`). Hacerlo corromperá el estado del sistema operativo.
 
@@ -19,7 +20,7 @@ Algunos ejemplos comunes incluyen:
 
 ---
 
-## 2. Métodos para delegar el procesamiento de interrupciones a una Tarea
+### 2. Métodos para delegar el procesamiento de interrupciones a una Tarea
 
 El concepto de delegar trabajo fuera de la ISR se conoce como **Procesamiento de Interrupción Diferido (Deferred Interrupt Processing)**. La regla de oro en sistemas embebidos es mantener las ISR lo más cortas y rápidas posible, delegando el procesamiento pesado a una Tarea de FreeRTOS.
 
@@ -31,7 +32,7 @@ Los métodos principales son:
 
 ---
 
-## 3. ¿Cómo usar una cola para transferir datos dentro y fuera de una ISR?
+### 3. ¿Cómo usar una cola para transferir datos dentro y fuera de una ISR?
 
 Para usar una cola interactuando con una ISR, se utilizan las versiones de la API que terminan en `FromISR`.
 
@@ -46,7 +47,7 @@ Para usar una cola interactuando con una ISR, se utilizan las versiones de la AP
 
 ---
 
-## 4. ¿Cuál es el modelo de anidamiento de interrupciones disponible en algunas portaciones de FreeRTOS?
+### 4. ¿Cuál es el modelo de anidamiento de interrupciones disponible en algunas portaciones de FreeRTOS?
 
 En arquitecturas que soportan prioridades de hardware (como los ARM Cortex-M de los STM32), FreeRTOS implementa un modelo de **Anidamiento Controlado (Controlled Interrupt Nesting)**.
 
@@ -63,18 +64,18 @@ Esto significa que una interrupción de mayor prioridad puede interrumpir a una 
 
 # Paso 03
 
-# Informe de Observación: Sincronización de ISR y Tareas mediante Semáforo Binario
+## Informe de Observación: Sincronización de ISR y Tareas mediante Semáforo Binario
 
 Este documento detalla la estructura y el comportamiento dinámico del sistema tras la implementación del mecanismo de sincronización entre el hardware (interrupción) y el software (RTOS).
 
 ---
 
-## 1. Mecanismo Utilizado
+### 1. Mecanismo Utilizado
 Se implementó un **Semáforo Binario** de FreeRTOS para establecer un canal de comunicación directo y eficiente entre la **Rutina de Servicio de Interrupción (ISR)** del botón externo y la tarea encargada de procesarlo (`task_btn`).
 
 ---
 
-## 2. Comportamiento Observado durante la Depuración
+### 2. Comportamiento Observado durante la Depuración
 
 Al monitorear las variables del sistema y los estados de ejecución en la herramienta de depuración, se registraron las siguientes métricas y comportamientos:
 
