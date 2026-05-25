@@ -61,4 +61,24 @@ Esto significa que una interrupción de mayor prioridad puede interrumpir a una 
     * **La restricción:** Debido a que el RTOS no las protege ni las conoce, **NUNCA** debes llamar a ninguna función de la API de FreeRTOS desde estas interrupciones. Son exclusivas para tareas de hardware ultra-críticas (ej. control de inversores de motores o apagado de emergencia).
 
 
-    
+# Paso 03
+
+# Informe de Observación: Sincronización de ISR y Tareas mediante Semáforo Binario
+
+Este documento detalla la estructura y el comportamiento dinámico del sistema tras la implementación del mecanismo de sincronización entre el hardware (interrupción) y el software (RTOS).
+
+---
+
+## 1. Mecanismo Utilizado
+Se implementó un **Semáforo Binario** de FreeRTOS para establecer un canal de comunicación directo y eficiente entre la **Rutina de Servicio de Interrupción (ISR)** del botón externo y la tarea encargada de procesarlo (`task_btn`).
+
+---
+
+## 2. Comportamiento Observado durante la Depuración
+
+Al monitorear las variables del sistema y los estados de ejecución en la herramienta de depuración, se registraron las siguientes métricas y comportamientos:
+
+* **Estado de la tarea:** Mientras el botón físico no es presionado, la tarea `task_btn` permanece estrictamente en estado **Blocked** (Bloqueada). Esto se logra de manera determinista mediante el uso del parámetro `portMAX_DELAY` en la llamada a la función `xSemaphoreTake()`.
+* **Uso de CPU:** Al encontrarse la tarea en estado bloqueado, `task_btn` es removida de la lista de tareas listas para ejecutar (*Ready List*). De esta forma, **no consume ciclos de procesamiento**, permitiendo que la tarea inactiva (`Idle Task`) u otras tareas de menor prioridad tomen el control del CPU. Esto elimina por completo el desperdicio crítico de recursos de procesamiento asociado al método de consulta continua (*polling*) implementado en las prácticas previas.
+* **Latencia y Respuesta:** En el instante en que se presiona el botón físico, el periférico de hardware (EXTI) dispara la interrupción de manera inmediata. La ISR ejecuta la función segura `xSemaphoreGiveFromISR()`, la cual es no bloqueante por diseño. Inmediatamente después, el uso de la macro `portYIELD_FROM_ISR()` evalúa el estado del programador: si la prioridad de `task_btn` es mayor que la de la tarea que estaba corriendo, el sistema operativo fuerza un **cambio de contexto inmediato**, logrando que el microcontrolador responda de manera prácticamente instantánea al evento físico.
+* **Sincronización:** Se comprobó experimentalmente que el semáforo binario actúa puramente como una **bandera de sincronización de eventos asincrónicos** entre el hardware y el software, actuando como un puente ideal que minimiza el *jitter* y la latencia.
