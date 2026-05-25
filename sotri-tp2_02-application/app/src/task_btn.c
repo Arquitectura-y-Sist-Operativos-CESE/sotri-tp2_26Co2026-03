@@ -102,6 +102,7 @@ void task_btn(void *parameters)
 
 void task_btn_statechart(void)
 {
+	static task_led_ev_t value_to_send = NOT_BLINKING;
 	/* Get Events to excite Task */
 	if (BTN_PRESSED == HAL_GPIO_ReadPin(task_btn_dta.gpio_port, task_btn_dta.pin))
 	{
@@ -134,7 +135,9 @@ void task_btn_statechart(void)
 					/* Print out: Task execution */
 					LOGGER_INFO(" %s - BTN PRESSED", pcTaskGetName(NULL));
 
-					put_event_task_led(EV_LED_BLINK);
+					//put_event_task_led(EV_LED_BLINK);
+					value_to_send = EV_LED_BLINK;
+					xQueueSendToBack(h_btn_led_q, &value_to_send, (portTickType) BTN_TICK_DEL_ZERO);
 					task_btn_dta.state = ST_BTN_DOWN;
 				}
 				else
@@ -164,7 +167,10 @@ void task_btn_statechart(void)
 					/* Print out: Task execution */
 					LOGGER_INFO(" %s - BTN HOVER", pcTaskGetName(NULL));
 
-					put_event_task_led(EV_LED_OFF);
+					//put_event_task_led(EV_LED_OFF);
+					value_to_send = EV_LED_OFF;
+					xQueueSendToBack(h_btn_led_q, &value_to_send, (portTickType) BTN_TICK_DEL_ZERO);
+
 					task_btn_dta.state = ST_BTN_UP;
 				}
 				else

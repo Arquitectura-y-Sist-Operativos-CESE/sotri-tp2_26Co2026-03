@@ -50,7 +50,8 @@ extern "C" {
 /********************** typedef **********************************************/
 /* Events to excite Task */
 typedef enum task_led_ev {EV_LED_OFF,
-						  EV_LED_BLINK} task_led_ev_t;
+						  EV_LED_BLINK,
+						  NOT_BLINKING} task_led_ev_t;
 
 /* States of Task */
 typedef enum task_led_st {ST_LED_OFF,

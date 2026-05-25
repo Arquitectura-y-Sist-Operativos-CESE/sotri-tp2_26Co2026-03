@@ -62,8 +62,10 @@ task_led_dta_t task_led_dta = {
 		LD2_GPIO_Port, LD2_Pin
 };
 
+task_led_ev_t g_received_value;
 /********************** internal functions declaration ***********************/
 void task_led_statechart(void);
+void task_ev_reciever (void);
 
 /********************** internal data definition *****************************/
 
@@ -74,6 +76,7 @@ uint32_t g_task_led_cnt;
 /* Task LED thread */
 void task_led(void *parameters)
 {
+
 	/*  Declare & Initialize Task Function variables */
 	g_task_led_cnt = G_TASK_LED_CNT_INI;
 	
@@ -94,6 +97,8 @@ void task_led(void *parameters)
 	{
 		/* Update Task Counter */
 		g_task_led_cnt++;
+
+		task_ev_reciever ();
 
 		/* Run Task Statechart */
     	task_led_statechart();
@@ -156,4 +161,20 @@ void task_led_statechart(void)
 	}
 }
 
+
+void task_ev_reciever (){
+
+	/* Check number of messages stored in a queue */
+	if (ZERO != uxQueueMessagesWaiting(h_btn_led_q))
+	{
+		/* Recive an task_led_ev_t value. Don't block if the queue is
+		 * already empty. */
+		xQueueReceive(h_btn_led_q, &g_received_value, (portTickType) LED_TICK_DEL_ZERO);
+
+		task_led_dta.event = g_received_value;
+		task_led_dta.flag = true;
+		LOGGER_INFO(" EVENTO RECIBIDO TASK LED ");
+	}
+
+}
 /********************** end of file ******************************************/
