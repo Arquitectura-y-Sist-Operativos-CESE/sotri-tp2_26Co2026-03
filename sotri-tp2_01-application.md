@@ -64,3 +64,50 @@ El Timer 2 está configurado para cumplir un objetivo muy específico en este pr
 * **Interacción con la HAL**: TIM2 se inicializa en `MX_TIM2_Init()`. Cuando este temporizador genera una interrupción, el hardware salta a `TIM2_IRQHandler`, el cual llama a la capa HAL mediante `HAL_TIM_IRQHandler(&htim2)`. La HAL limpia las banderas (flags) del hardware y eventualmente llama a `HAL_TIM_PeriodElapsedCallback`.
 * **Interacción con FreeRTOS**: Dentro del callback `HAL_TIM_PeriodElapsedCallback`, el código revisa si la interrupción fue causada por TIM2 (`htim->Instance == TIM2`). Al ser verdadero, incrementa la variable global `ulHighFrequencyTimerTicks`.
 * **Propósito**: En el archivo `FreeRTOSConfig.h`, la recolección de estadísticas está habilitada (`configGENERATE_RUN_TIME_STATS 1`). Para que FreeRTOS pueda calcular de forma precisa cuánto tiempo de CPU consume cada tarea (hilo), requiere un reloj de muy alta frecuencia, considerablemente más rápido que el "Tick" estándar de 1 kHz del SysTick. Las funciones `configureTimerForRunTimeStats` y `getRunTimeCounterValue` en `freertos.c` (y `main.c`) alimentan a FreeRTOS con los incrementos de esta variable `ulHighFrequencyTimerTicks` generada por TIM2 para poder procesar la analítica del planificador.
+
+
+
+
+# Análisis del Código Fuente: Sistema Controlado por Eventos con FreeRTOS
+
+Este proyecto implementa un Sistema Disparado por Eventos (ETS - Event-Triggered System) utilizando el sistema operativo en tiempo real FreeRTOS. La arquitectura del software divide la lógica en tareas independientes (hilos) que se comunican entre sí para detectar la pulsación de un botón y hacer parpadear un LED en respuesta.
+
+A continuación, se detalla el funcionamiento de cada archivo:
+
+## 1. `app.c` (Inicialización de la Aplicación)
+Este archivo es el punto de entrada de la lógica de usuario de la aplicación.
+* **Inicialización de Variables:** La función `app_init()` inicializa en cero tres variables globales (`g_app_tick_cnt`, `g_task_idle_cnt`, `g_app_stack_overflow_cnt`) que se utilizarán para llevar estadísticas del rendimiento y salud del sistema operativo.
+* **Creación de Tareas:** A través de la API de FreeRTOS `xTaskCreate()`, se instancian dos tareas:
+    1.  `Task BTN` (manejada por la función `task_btn`).
+    2.  `Task LED` (manejada por la función `task_led`).
+* Ambas tareas se crean con el mismo nivel de prioridad (`tskIDLE_PRIORITY + 1`) y una memoria de pila (stack) de `2 * configMINIMAL_STACK_SIZE`. 
+
+## 2. `freertos.c` (Ganchos / Hooks del Sistema Operativo)
+Este archivo implementa rutinas de *callback* o "hooks" integradas a FreeRTOS, las cuales se disparan ante eventos internos del sistema operativo:
+* **`vApplicationIdleHook`:** Se ejecuta repetidamente siempre que no haya ninguna tarea de alta prioridad lista para correr (cuando se ejecuta la "Idle Task"). Aquí se incrementa el contador `g_task_idle_cnt`, lo que permite medir el tiempo de inactividad del CPU.
+* **`vApplicationTickHook`:** Se invoca automáticamente en cada interrupción del "Tick" del sistema (generalmente cada 1 ms). Incrementa la variable `g_app_tick_cnt`.
+* **`vApplicationStackOverflowHook`:** Se llama si FreeRTOS detecta que alguna de las tareas ha excedido el límite de su memoria de pila asignada. Para fines de depuración, deshabilita las interrupciones (`taskENTER_CRITICAL()`), fuerza una detención del sistema mediante `configASSERT( 0 )` y, en caso de continuar, incrementaría `g_app_stack_overflow_cnt`.
+
+## 3. `task_btn.c` (Gestión del Botón y Antirrebote)
+Define el comportamiento de la tarea encargada de leer el estado físico del pulsador.
+* **Bucle Principal:** La función `task_btn()` ejecuta un bucle infinito (`for (;;)`) donde constantemente invoca a la función `task_btn_statechart()`.
+* **Máquina de Estados (Statechart):** `task_btn_statechart()` implementa una lógica no bloqueante para leer el pin del botón y procesar el "antirrebote" (debouncing) mediante retardos basados en el Tick de FreeRTOS (`xTaskGetTickCount()`). 
+* **Transiciones y Eventos:**
+    * Cuando el usuario presiona el botón, la máquina pasa de `ST_BTN_UP` a `ST_BTN_FALLING`. Tras esperar un tiempo prudencial (`DEL_BTN_MAX`) para ignorar el ruido eléctrico, valida que siga presionado y pasa a `ST_BTN_DOWN`. En este momento, emite un evento enviando `EV_LED_BLINK` a la tarea del LED utilizando la función `put_event_task_led()`.
+    * Al soltar el botón, transita hacia `ST_BTN_RISING` y, tras validar con un retraso, envía el comando `EV_LED_OFF` para detener el parpadeo, volviendo finalmente a `ST_BTN_UP`.
+
+## 4. `task_led.c` (Control del Actuador/LED)
+Controla el parpadeo del LED físico basado en los eventos recibidos.
+* **Bucle Principal:** De forma similar al botón, `task_led()` se ejecuta de forma infinita llamando a `task_led_statechart()`.
+* **Máquina de Estados (Statechart):** Posee dos estados principales:
+    * **`ST_LED_OFF`:** Mantiene el LED apagado. Si recibe la bandera (`flag == true`) y el evento `EV_LED_BLINK`, apaga la bandera, cambia de estado a `ST_LED_BLINK`, enciende el LED (`LED_ON`) y guarda la marca de tiempo actual.
+    * **`ST_LED_BLINK`:** Si recibe un evento `EV_LED_OFF`, apaga el LED y vuelve a `ST_LED_OFF`. Si no hay eventos de apagado, evalúa periódicamente si ha pasado el tiempo estipulado (`DEL_LED_MAX`). Cuando esto sucede, invierte (Toggle) el estado actual del pin mediante `HAL_GPIO_TogglePin()`, generando el efecto de parpadeo continuo sin bloquear el procesador.
+
+## 5. `task_led_interface.c` (Interfaz de Comunicación entre Tareas)
+Proporciona la API para la comunicación unidireccional desde otras partes del código (como el botón) hacia la tarea del LED.
+* Contiene la función `put_event_task_led(task_led_ev_t event)`, que recibe un evento por parámetro.
+* Lo que hace internamente es inyectar dicho evento en la variable de contexto global de la tarea del LED (`task_led_dta.event = event`) y levantar una bandera o *flag* (`task_led_dta.flag = true`) para notificar a la máquina de estados del LED que hay un nuevo evento pendiente de procesar. Esta es una implementación básica y sin bloqueos de paso de mensajes, adecuada al no tener prioridades críticas compartidas.
+
+## 6. `app_it.c` (Plantilla para Interrupciones de la Aplicación)
+* Actualmente, este archivo actúa como una plantilla ("stub").
+* Posee la estructura, cabeceras, y declaración de datos necesarios, pero **no tiene lógica interna implementada**. En un proyecto más avanzado, aquí se escribirían las Rutinas de Servicio de Interrupción (ISRs) específicas que maneja el usuario (por ejemplo, interrupciones externas de pines, periféricos ADC o USART) asociadas puramente al nivel de la aplicación en vez de los archivos estándar del núcleo del sistema (como `stm32f4xx_it.c`).
