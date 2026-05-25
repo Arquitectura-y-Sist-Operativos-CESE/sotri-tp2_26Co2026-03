@@ -59,14 +59,13 @@ FreeRTOS es un sistema preemptivo basado en prioridades, y las colas respetan es
 
 En este paso reemplazamos el mecanismo de banderas (polling) que veníamos usando por una **Cola (Queue)** de FreeRTOS para comunicar la `task_btn` con la `task_led`. 
 
-## ¿Qué hicimos?
-1. **Creación de la cola:** Creamos una cola global (`xLedEventQueue`) con capacidad para guardar hasta 5 eventos.
+## ¿Qué hicimos? 
+1. **Creación de la cola:** Creamos una cola global (`xLedEventQueue`) con capacidad para guardar hasta 5 eventos. (h_btn_led_q = xQueueCreate(5, sizeof(task_led_ev_t));)
 2. **Envío desde el Botón (Task BTN):** En la máquina de estados del botón, reemplazamos la función que levantaba la bandera por un `xQueueSend`. A esto lo configuramos de forma **no bloqueante** (tiempo de espera = 0). Lo hicimos así para que la tarea del botón nunca se quede trabada y pueda seguir leyendo el pin físico continuamente, aunque la cola estuviera llena.
 3. **Recepción en el LED (Task LED):** Acá metimos el cambio más grande. Pasamos a usar `xQueueReceive` con un sistema de **bloqueo adaptativo**:
     * Si el LED está apagado (`ST_LED_OFF`), bloqueamos la tarea por tiempo infinito (`portMAX_DELAY`). La tarea se "duerme" por completo y no gasta CPU hasta que el botón envía algo.
     * Si el LED está parpadeando (`ST_LED_BLINK`), la bloqueamos con un timeout igual al tiempo del parpadeo (`DEL_LED_MAX`). De esta forma, si no llega la orden de apagar, la tarea se despierta por timeout, hace el toggle (cambio de estado) del LED, y vuelve a esperar.
 
 ## ¿Qué observamos al depurar el código?
-* **Ahorro brutal de CPU:** Al monitorear la variable `g_task_idle_cnt`, vimos que se incrementó un montón en comparación a la versión anterior. Como ahora las tareas se bloquean de verdad en vez de dar vueltas en un *while* preguntando por una bandera, el microcontrolador pasa mucho más tiempo en reposo (en la tarea Idle).
 * **Cero pérdida de eventos:** Al usar una cola, los eventos se guardan en orden (FIFO). Ya no pasa que un evento sobrescriba a otro si el usuario presiona el botón súper rápido.
 * **Respuesta en tiempo real:** En cuanto apretamos el botón, el sistema operativo despierta a la tarea del LED inmediatamente, eliminando cualquier tipo de lag en la respuesta.
