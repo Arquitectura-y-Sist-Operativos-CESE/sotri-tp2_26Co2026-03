@@ -1,4 +1,3 @@
-# sotri-tp2_26Co2026-03
 # CESE - Sistemas Operativos de Tiempo Real
 ## Trabajo Práctico N°: 2 - Comunicación de Tareas de FreeRTOS
 ### 26Co2026
